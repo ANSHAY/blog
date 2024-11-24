@@ -1,0 +1,294 @@
+---
+title: "Intro to Deep Learning with fastai"
+format:
+  html:
+    code-fold: true
+jupyter: python3
+categories: [Deep Learning]
+---
+
+### 1. Introduction
+Deep learning is a part of machine learning that uses neural networks with many layers—hence the name "deep"—to analyze different types of data. It has changed the game in areas like computer vision, natural language processing, and speech recognition, allowing machines to do tasks that we once thought only humans could do.
+
+A neural network works a bit like our brain. Each neuron in the network takes in several inputs, combines them in a certain way, and then uses a mathematical function to produce an output. When you connect many neurons together, you create a layer, and stacking multiple layers forms a neural network.
+
+In this blog post, I won’t go into the technical details of neural networks and deep learning. Instead, I want to show you how to use the fastai library to quickly build and train deep learning models. Fastai is a user-friendly library built on top of PyTorch that makes it easy to create and train models with just a few lines of code.
+
+You don’t even need to buy a powerful GPU to get started. We can use free GPU access available on platforms like Kaggle and Google Colab. In the following sections, I’ll walk you through a simple example, showing you all the steps you need to take to use fastai for your deep learning projects.
+
+### 2. What is Fastai?
+[Fastai](https://www.fast.ai/) was designed to make deep learning easier and more accessible, allowing anyone to achieve impressive results with just a little bit of code. It simplifies the process of building deep learning models by taking care of the complicated details for you. At the same time, it gives you the flexibility to adjust various settings and parameters to customize the models according to your needs.
+
+### 3. Setting Up Your Environment
+Before we get started, it's important to set up your environment properly. Creating a separate environment is a good practice because it helps keep your main setup clean and prevents any issues if something goes wrong. An environment is simply a collection of libraries that your program needs to run.
+
+In this guide, I’ll show you how to create an environment using Conda, but there are other methods available online if you want to explore those.
+
+### Prerequisites:
+- **Python**: Make sure you have Python 3.11 or later installed.
+- **Jupyter Notebook**: This is the best platform for running Fastai code.
+
+### Installation Steps:
+
+1. First, download and install Anaconda or Miniconda from the official website: [Installation](https://docs.anaconda.com/miniconda/install/).   
+2. Create a new environment by running this command (use latest python version): 
+   ```
+   conda create -n fastai-env python=3.11
+   ```   
+3. Activate your new environment with:
+   ```
+   conda activate fastai-env
+   ```
+4. Install Fastai using pip by running:
+   ```
+   pip install fastai
+   ```
+
+**Setting Up Jupyter Notebooks:**
+
+1. To install Jupyter, run:   
+   ```
+   pip install notebook
+   ```   
+2. Finally, launch Jupyter Notebook with:   
+   ```
+   jupyter notebook
+   ```
+
+Now you’re all set up and ready to start working with Fastai!
+
+### 4. Starting with Fastai
+First, I’ll show you the complete code that trains a simple model to determine whether an input image is of a bird or not. After that, I’ll break down each step so you can understand what’s happening and feel more connected to the code.
+
+Fastai makes it easy to build deep learning models by streamlining the process. The main steps involve creating a dataloader (which loads your data) and a learner (an object that trains the model). Fastai offers various DataBlocks for different types of data, making it straightforward to set up your data.
+
+In this example, we’ll use a specific type of learner called `vision_learner`, which is designed for image classification tasks. This learner handles the training process and all the details involved. All you need to do is specify which model you want to use and provide the dataloader. If you want more control, you can also adjust many parameters to fine-tune the training process.
+
+Let first see the full code:
+```python
+# imports
+from duckduckgo_search import DDGS
+from fastcore.all import *
+from fastai.vision.all import *
+from fastai.vision.widgets import ImageClassifierCleaner
+from fastdownload import download_url
+import time
+
+# func to search images
+def search_images_ddg(topic, max=100):
+  urls = L(DDGS().images(keywords=topic, max_results=max)).itemgot('image')
+  return urls
+
+topics = "birds", "forest"
+path = Path('bird_or_not')
+
+for topic in topics:
+  dest = path/topic
+  dest.mkdir(exist_ok=True, parents=True)
+  download_images(dest, urls=search_images_ddg(topic))
+  time.sleep(5)
+  resize_images(dest, max_seiz=400, dest=dest)
+
+# remove invalid images
+failed = verify_images(get_image_files(path))
+failed.map(Path.unlink)
+len(failed)
+
+# define dataloader
+dls = DataBlock(blocks=(ImageBlock, CategoryBlock),
+                get_items=get_image_files,
+                splitter=RandomSplitter(seed=32),
+                get_y=parent_label,
+                item_tfms=[Resize(192, method='squish')]
+                ).dataloaders(path, bs=32)
+
+# show some images from the batch
+dls.show_batch(max_n=6)
+
+# define a learner
+learn = vision_learner(dls, resnet50, metrics=error_rate)
+
+# fine tune the model
+learn.fine_tune(2)
+
+# Interpret the results
+interp = ClassificationInterpretation.from_learner(learn)
+interp.plot_confusion_matrix()
+
+# see where the losses are highest
+interp.plot_top_losses(5, nrows=1)
+
+# save your model
+modelFile = "bird_or_not.pkl"
+learn.export(modelFile)
+
+# predict on a new image
+image = "bird.jpg"
+learn.predict(image)
+```
+
+Let’s break this down step by step.
+
+To train a model, we first need some data. In this case, we want to create a model that can classify images as either containing a bird or not. So, we’ll use two categories: "birds" and "forest" (the latter representing images without birds).
+
+```python
+topics = "birds", "forest"
+path = Path('bird_or_not')
+```
+
+Next, we’ll download the images using DuckDuckGo’s image search API. Before you do this, make sure to install the `duckduckgo_search` package by running `pip install duckduckgo_search` in your terminal.
+
+Here’s how we can search for images:
+
+```python
+from duckduckgo_search import DDGS
+
+def search_images_ddg(topic, max=100):
+    urls = L(DDGS().images(keywords=topic, max_results=max)).itemgot('image')
+    return urls
+```
+
+This function takes a topic and returns a list of URLs for images related to that topic.
+
+Now, for each topic, we’ll download the images from the URLs we just got. We’ll use the `download_images` function from Fastai and then resize the images to a smaller, fixed size.
+
+```python
+for topic in topics:
+    dest = path/topic
+    dest.mkdir(exist_ok=True, parents=True)  # Create a folder for the topic if it doesn't exist
+    download_images(dest, urls=search_images_ddg(topic))  # Download the images
+    time.sleep(5)  # Pause for a moment to avoid overwhelming the server
+    resize_images(dest, max_size=400, dest=dest)  # Resize the images
+```
+
+Since some of the downloaded files might not be valid images, Fastai provides a function to check for any errors. We’ll remove any invalid images before moving on.
+
+```python
+# Remove invalid images
+failed = verify_images(get_image_files(path))
+failed.map(Path.unlink)  # Delete the invalid images
+len(failed)  # Check how many images were removed
+```
+
+This way, we ensure that we only keep valid images for training our model.
+
+Once we have our data ready, the next step is to define the dataloader and the learner before we can train the model.
+
+### Defining the Dataloader
+
+```python
+dls = DataBlock(
+    blocks=(ImageBlock, CategoryBlock),
+    get_items=get_image_files,
+    splitter=RandomSplitter(seed=32),
+    get_y=parent_label,
+    item_tfms=[Resize(192, method='squish')]
+).dataloaders(path, bs=32)
+```
+
+In this code, we set up the DataBlock, which tells Fastai what our input and output will be. The `ImageBlock` represents the input images, while the `CategoryBlock` represents the output categories (either "Bird" or "Forest"). 
+
+The `get_items` parameter specifies a function to load the images. The `splitter` is crucial because it divides the data into training and validation sets. This is important for evaluating how well the model performs on new, unseen data. If we only tested the model on the training data, we wouldn’t get an accurate picture of its performance, as it has already seen that data.
+
+The `RandomSplitter()` function splits the dataset, and by default, it uses 20% of the data for validation. You can adjust this fraction if needed.
+
+The `get_y` parameter needs a function to determine the label for each image. In this case, we use `parent_label`, which assigns the label based on the name of the parent directory. This works well since we have separate folders for "birds" and "forest."
+
+The `item_tfms` parameter allows us to apply transformations to the data before training. Here, we’re simply resizing the images, and the method `squish` ensures that the entire image fits into the specified size.
+
+Once the dataloader is set up, we can also take a look at the images in our dataset.
+
+```python
+dls.show_batch(max_n=6)
+```
+
+### Defining the Learner
+
+Now that we have our dataloader ready, we can define the learner:
+
+```python
+learn = vision_learner(dls, resnet50, metrics=error_rate)
+```
+
+The learner is a high-level object in Fastai that simplifies the training process. You just need to provide the dataloader we created, the model you want to use (in this case, `resnet50`), and the metric for evaluating the model's performance (we're using `error_rate`).
+
+We’re using a pretrained model because training a model from scratch can be quite complex and time-consuming. Using a pretrained model and fine-tuning it on our dataset is known as transfer learning. Fastai makes this easy with just one line of code.
+
+### Fine-Tuning the Model
+
+```python
+learn.fine_tune(2)
+```
+
+Here, the parameter specifies the number of epochs for training. Since our task is a straightforward classification problem, we can achieve good results even with a small number of epochs. This is one of the great advantages of using Fastai!
+
+### Interpreting the Results
+
+After training your model, you can interpret the results using the following code:
+
+```python
+interp = ClassificationInterpretation.from_learner(learn)
+interp.plot_confusion_matrix()
+```
+
+This will create a confusion matrix, which helps you see how well the model is performing across different categories. You can also check where the model is struggling the most by plotting the top losses:
+
+```python
+interp.plot_top_losses(5, nrows=1)
+```
+
+This will show you the five images where the model had the highest losses, giving you insight into where it might be making mistakes.
+
+### Saving Your Model
+
+It's important to save your trained model so you can use it later. You can easily export it to a pickle file with this code:
+
+```python
+modelFile = "bird_or_not.pkl"
+learn.export(modelFile)
+```
+
+### Making Predictions
+
+To run inference on a new image, you can use the `predict` function in the learner and provide the path to the image:
+
+```python
+image = 'bird.jpg'  # path to the image
+learn.predict(image)
+```
+
+As you can see, Fastai makes it very simple and quick to train a model and get good results. In just a few lines of code, we downloaded images from the internet, trained a classifier, and made predictions on new images.
+
+### What’s Next?
+
+In the next blog post, I’ll cover how to upload this model online and create a web interface where you can upload an image and classify it in real-time. 
+
+Feel free to run the code above and see how it works. If you encounter any issues, a quick search online can help you find solutions to most problems.
+
+In this blog post, we explored the basics of deep learning and how Fastai simplifies the process of building and training models. We walked through an example of creating a classifier by fine-tuning a ResNet model using images downloaded from the internet.
+
+As you start your deep learning journey, remember that practice is essential. Experiment with different datasets, try out various models, and engage with the community. Fastai offers the tools and resources you need to succeed, whether you’re just starting or have some experience under your belt.
+
+### Useful Links and Resources
+
+#### 1. Fastai Documentation and Tutorials
+- **Fastai Documentation**: Check out the official [Fastai Documentation](https://docs.fast.ai/) for detailed guides and references.
+- **Fastai Course**: Enroll in the [Practical Deep Learning for Coders](https://course.fast.ai/) course to learn deep learning hands-on.
+
+#### 2. Recommended Book
+- **"Deep Learning for Coders with Fastai and PyTorch"**: You can find this helpful book on [Amazon](https://www.amazon.com/Deep-Learning-Coders-fastai-PyTorch/dp/1492045527).
+
+#### 3. Online Communities and Forums
+- **Fastai Forums**: Join the [Fastai Community Forums](https://forums.fast.ai/) to connect with other learners and experts.
+- **Stack Overflow**: For specific questions, check the [Fastai Tag on Stack Overflow](https://stackoverflow.com/questions/tagged/fastai).
+- **Reddit - Machine Learning**: Engage with the community on [r/MachineLearning](https://www.reddit.com/r/MachineLearning/).
+
+#### 4. Case Studies and Examples
+- **Fastai GitHub Repository**: Explore the [Fastai GitHub](https://github.com/fastai/fastai) for the source code and additional resources.
+- **Kaggle Datasets and Notebooks**: Visit [Kaggle](https://www.kaggle.com/) for datasets and notebooks to practice your skills.
+- **Fastai Examples Repository**: Check out the [Fastai Examples](https://github.com/fastai/fastbook) for practical examples and projects.
+
+#### 5. Additional Learning Resources
+- **YouTube - Fastai Lectures**: Watch lectures and tutorials on the [Fastai YouTube Channel](https://www.youtube.com/c/Fastai) to deepen your understanding.
+
+These resources will help you further your knowledge and skills in deep learning with Fastai!
